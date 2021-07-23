@@ -1,6 +1,10 @@
+import datetime
+import json
 import os
+
 import dotenv
 import logging
+import requests
 
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -8,6 +12,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup, State
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.util import asyncio
 
 from models import database_dsn, Note
 
@@ -43,9 +48,10 @@ async def make_choice(message: types.Message):
         ],
         [
             types.KeyboardButton('/создать_заметку'),
-            types.KeyboardButton('/мои_заметки'),
+            types.KeyboardButton('/последняя_заметка'),
         ],
         [
+            types.KeyboardButton('/случайная_шутка'),
             types.KeyboardButton('/will')
         ],
     ])
@@ -62,7 +68,7 @@ async def handler_cancel(message: types.Message, state: FSMContext):
 
     logging.info('Cancelling state %r', current_state)
     await state.finish()
-    await message.reply('Cancelled.', reply_markup=types.ReplyKeyboardRemove())
+    await message.reply('Cancelled.')
 
 
 @dp.message_handler(commands=['повторяй_за_мной'], state='*')
@@ -86,7 +92,7 @@ async def command_note(message: types.Message):
     )
 
 
-@dp.message_handler(commands='мои_заметки', state='*')
+@dp.message_handler(commands='последняя_заметка', state='*')
 async def command_my_note(message: types.Message, state: FSMContext):
     session = sessionmaker(bind=database_dsn)()
     my_note = session.query(Note).filter(Note.user_id == message.from_user.id).order_by(Note.id.desc()).first()
@@ -97,11 +103,51 @@ async def command_my_note(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.note)
 async def save_note(message: types.Message, state: FSMContext):
     session = sessionmaker(bind=database_dsn)()
-    query = Note(user_id=message.from_user.id, note=message.text)
+    query = Note(user_id=message.from_user.id, note=message.text, created_at=datetime.datetime.now())
     session.add(query)
     session.commit()
     await state.finish()
     await bot.send_message(message.from_user.id, 'Записал, спасибо за доверие  😉')
+
+
+@dp.message_handler(commands='случайная_шутка')
+async def handler_joke(message: types.Message):
+    url = r"https://official-joke-api.appspot.com/random_joke"
+    data = requests.get(url)
+    tt = json.loads(data.text)
+    await bot.send_message(message.chat.id, 'Вот и твоя шутка')
+    await asyncio.sleep(1)
+    await bot.send_message(message.chat.id, tt["setup"])
+    await asyncio.sleep(3)
+    await bot.send_message(message.chat.id, tt['punchline'])
+
+
+@dp.message_handler(commands=['will'])
+async def command_choice(message: types.Message):
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton('search', switch_inline_query_current_chat=''))
+    await bot.send_message(message.from_user.id, "Select:", reply_markup=keyboard)
+
+
+@dp.inline_handler()
+async def handler_choice(query: types.InlineQuery):
+    name = query.query.lower()
+    session = sessionmaker(bind=database_dsn)()
+    note_data = session.query(Note).filter(Note.note.contains(name)).limit(20)
+    notes = []
+    for i in note_data:
+        content = types.InputTextMessageContent(
+            message_text=f'Твоя запись {i.note}',
+        )
+
+        data = types.InlineQueryResultArticle(
+            id=i.id,
+            title=i.note,
+            description=f'Запись была создана {i.created_at}',
+            input_message_content=content
+        )
+        notes.append(data)
+    await bot.answer_inline_query(inline_query_id=query.id, results=notes, cache_time=False)
 
 
 if __name__ == "__main__":

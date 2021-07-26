@@ -15,3 +15,14 @@ class Note(Base):
     created_at = Column(DateTime)
     user_id = Column(Integer)
     note = Column(String)
+
+
+class Translation(Base):
+    __tablename__ = "translation"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer)
+    original_text = Column(String)
+    translation_text = Column(String)
+    original_language = Column(String)
+    translation_language = Column(String)
+    created_at = Column(DateTime)

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, MetaData, Column, Integer, String, TIMESTAMP
+from sqlalchemy import create_engine, MetaData, Column, Integer, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 
 from config import user, password, host, port, database
@@ -12,6 +12,6 @@ Base = declarative_base()
 class Note(Base):
     __tablename__ = "note"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created_at = Column(Integer)
+    created_at = Column(DateTime)
     user_id = Column(Integer)
     note = Column(String)

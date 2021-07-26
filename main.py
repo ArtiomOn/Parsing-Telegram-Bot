@@ -9,7 +9,6 @@ import requests
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import StatesGroup, State
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
@@ -36,7 +35,7 @@ async def send_greeting(message: types.Message):
     await bot.send_sticker(message.chat.id, sti)
     me = await bot.get_me()
     await message.reply(f'Привет, я великий <b>{me.first_name}</b>\n'
-                        f'Готов тебе служить - <b>{message.from_user.first_name}</b>', parse_mode='html')
+                        f'Готов тебе служить - <b>{message.chat.first_name}</b>', parse_mode='html')
 
 
 @dp.message_handler(commands=['choice'])
@@ -44,7 +43,6 @@ async def make_choice(message: types.Message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         [
             types.KeyboardButton('/повторяй_за_мной'),
-            types.KeyboardButton('/отключить_повторение'),
         ],
         [
             types.KeyboardButton('/создать_заметку'),
@@ -52,7 +50,7 @@ async def make_choice(message: types.Message):
         ],
         [
             types.KeyboardButton('/случайная_шутка'),
-            types.KeyboardButton('/will')
+            types.KeyboardButton('/поиск_заметок')
         ],
     ])
 
@@ -60,7 +58,6 @@ async def make_choice(message: types.Message):
 
 
 @dp.message_handler(state='*', commands='отключить_повторение')
-@dp.message_handler(Text(equals='cancel', ignore_case=True), state='*')
 async def handler_cancel(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is None:
@@ -68,13 +65,16 @@ async def handler_cancel(message: types.Message, state: FSMContext):
 
     logging.info('Cancelling state %r', current_state)
     await state.finish()
-    await message.reply('Cancelled.')
+    await message.reply('Успешно')
 
 
 @dp.message_handler(commands=['повторяй_за_мной'], state='*')
 async def command_repeat(message: types.Message):
+    logging.info(f'The bot started repeating after the user {message.from_user.id}')
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[types.KeyboardButton('/отключить_повторение')]],
+                                       one_time_keyboard=True)
     await Form.repeat.set()
-    await message.reply('Напиши что-то:')
+    await message.reply('Напиши что-то:', reply_markup=markup)
 
 
 @dp.message_handler(state=Form.repeat)
@@ -84,6 +84,7 @@ async def handler_repeat(message: types.Message):
 
 @dp.message_handler(state='*', commands='создать_заметку')
 async def command_note(message: types.Message):
+    logging.info(f'The note was created by the user {message.from_user.id}')
     await Form.note.set()
     await bot.send_message(
         message.chat.id,
@@ -94,24 +95,31 @@ async def command_note(message: types.Message):
 
 @dp.message_handler(commands='последняя_заметка', state='*')
 async def command_my_note(message: types.Message, state: FSMContext):
-    session = sessionmaker(bind=database_dsn)()
-    my_note = session.query(Note).filter(Note.user_id == message.from_user.id).order_by(Note.id.desc()).first()
-    await bot.send_message(message.from_user.id, my_note.note)
-    await state.finish()
+    logging.info(f'The last note was viewed by the user {message.from_user.id}')
+    try:
+        session = sessionmaker(bind=database_dsn)()
+        my_note = session.query(Note).filter(Note.user_id == message.from_user.id).order_by(Note.id.desc()).first()
+        await bot.send_message(message.chat.id, my_note.note)
+        await state.finish()
+    except Exception as e:
+        await bot.send_message(message.chat.id, f'У вас пока нет заметок\n'
+                                                f'<b>For Admin</b> - <b>{e}</b>', parse_mode='html')
 
 
 @dp.message_handler(state=Form.note)
 async def save_note(message: types.Message, state: FSMContext):
+    logging.info(f'The note was saved for the user {message.from_user.id}')
     session = sessionmaker(bind=database_dsn)()
     query = Note(user_id=message.from_user.id, note=message.text, created_at=datetime.datetime.now())
     session.add(query)
     session.commit()
     await state.finish()
-    await bot.send_message(message.from_user.id, 'Записал, спасибо за доверие  😉')
+    await bot.send_message(message.chat.id, 'Записал, спасибо за доверие  😉')
 
 
 @dp.message_handler(commands='случайная_шутка')
 async def handler_joke(message: types.Message):
+    logging.info(f'The joke was created by the user {message.from_user.id}')
     url = r"https://official-joke-api.appspot.com/random_joke"
     data = requests.get(url)
     tt = json.loads(data.text)
@@ -122,22 +130,23 @@ async def handler_joke(message: types.Message):
     await bot.send_message(message.chat.id, tt['punchline'])
 
 
-@dp.message_handler(commands=['will'])
+@dp.message_handler(commands=['поиск_заметок'])
 async def command_choice(message: types.Message):
+    logging.info(f'A user has started searching for notes {message.from_user.id}')
     keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton('search', switch_inline_query_current_chat=''))
-    await bot.send_message(message.from_user.id, "Select:", reply_markup=keyboard)
+    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
+    await bot.send_message(message.chat.id, "Поиск заметок:", reply_markup=keyboard)
 
 
 @dp.inline_handler()
 async def handler_choice(query: types.InlineQuery):
     name = query.query.lower()
     session = sessionmaker(bind=database_dsn)()
-    note_data = session.query(Note).filter(Note.note.contains(name)).limit(20)
+    note_data = session.query(Note).filter((Note.note.contains(name)) & (Note.user_id == query.from_user.id)).limit(20)
     notes = []
     for i in note_data:
         content = types.InputTextMessageContent(
-            message_text=f'Твоя запись {i.note}',
+            message_text=f'Твоя запись: {i.note}',
         )
 
         data = types.InlineQueryResultArticle(

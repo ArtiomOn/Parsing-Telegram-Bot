@@ -7,6 +7,7 @@ import logging
 import requests
 from urllib.parse import urlparse, parse_qs
 
+from bs4 import BeautifulSoup
 from lxml.html import fromstring
 from requests import get
 
@@ -67,7 +68,7 @@ async def create_menu(message: types.Message):
             types.KeyboardButton('/переведи_текст'),
         ],
         [
-            types.KeyboardButton('/will')
+            types.KeyboardButton('/поиск_в_магазинах')
         ],
 
     ])
@@ -249,7 +250,7 @@ async def handler_translate_execute(message: types.Message, state: FSMContext):
         await state.get_state(None)
 
 
-@dp.message_handler(commands='will')
+@dp.message_handler(commands='поиск_в_магазинах')
 async def command_test(message: types.Message):
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
@@ -260,26 +261,34 @@ async def command_test(message: types.Message):
 async def testing(query: types.InlineQuery):
     product_name = query.query.lower()
     save_product_data = []
-    raw = get(f'https://e-catalog.md/ro/search?q={product_name}').text
-    page = fromstring(raw)
     i = 0
-    for result in page.cssselect("a"):
-        i += 1
-        url = result.get("href")
-        if url.startswith("/url?"):
-            url = parse_qs(urlparse(url).query)['q']
-        else:
-            continue
+    r = requests.get(f'https://e-catalog.md/ro/search?q={product_name}')
+    html = BeautifulSoup(r.text, 'html.parser')
+
+    for el in html.select('.products-list__body > .products-list__item'):
+        image = el.select('.product-card > .product-card__image > a > img')
+        title = el.select('.product-card > .product-card__info > .product-card__name > a')
+        price = el.select('.product-card > .product-card__actions > .product-card__prices > span')
+
         content = types.InputTextMessageContent(
-            message_text=f'Список данных: {url[0]}',
+            message_text=f'Ссылка на товар: {title[0].get("href")}',
         )
-        data = types.InlineQueryResultArticle(
-            id=str(i),
-            title=f'Магазин: {url[0]}',
-            description=f'Запись была создана: {datetime.datetime.now()}',
-            input_message_content=content
-        )
-        save_product_data.append(data)
+        i += 1
+        try:
+            data = types.InlineQueryResultArticle(
+                id=str(i),
+                title=f'Название: {title[0].text}',
+                description=f'Цена: {price[0].text}',
+                input_message_content=content,
+                thumb_url=image[0].get('src'),
+                thumb_width=48,
+                thumb_height=48
+
+            )
+            save_product_data.append(data)
+        except IndexError:
+            continue
+
     await bot.answer_inline_query(inline_query_id=query.id, results=save_product_data, cache_time=False)
 
 

@@ -5,6 +5,10 @@ import os
 import dotenv
 import logging
 import requests
+from urllib.parse import urlparse, parse_qs
+
+from lxml.html import fromstring
+from requests import get
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
@@ -36,12 +40,15 @@ class TranslateForm(StatesGroup):
 class Form(StatesGroup):
     repeat = State()
     note = State()
-    translate = State()
+    magazine = State()
+
+
+technical_site = 'site:darwin.md'
 
 
 @dp.message_handler(commands=['start'])
 async def send_greeting(message: types.Message):
-    sti = open('static/AnimatedSticker.tgs', 'rb')
+    sti = open('static/car.gif', 'rb')
     await bot.send_sticker(message.chat.id, sti)
     me = await bot.get_me()
     await message.reply(f'Привет, я <b>{me.first_name}</b>\n'
@@ -50,13 +57,19 @@ async def send_greeting(message: types.Message):
 
 @dp.message_handler(commands=['menu'])
 async def create_menu(message: types.Message):
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, keyboard=[
+    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True, one_time_keyboard=True, keyboard=[
         [
             types.KeyboardButton('/повторяй_за_мной'),
             types.KeyboardButton('/заметки'),
-            types.KeyboardButton('/случайная_шутка'),
-            types.KeyboardButton('/переведи_текст')
         ],
+        [
+            types.KeyboardButton('/случайная_шутка'),
+            types.KeyboardButton('/переведи_текст'),
+        ],
+        [
+            types.KeyboardButton('/will')
+        ],
+
     ])
 
     await bot.send_message(message.chat.id, 'Меню:', reply_markup=markup)
@@ -92,9 +105,13 @@ async def notes(message: types.Message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         [
             types.KeyboardButton('/создать_заметку'),
+        ],
+        [
             types.KeyboardButton('/последняя_заметка'),
+        ],
+        [
             types.KeyboardButton('/поиск_заметок'),
-        ]
+        ],
     ])
     await message.reply('Выберите:', reply_markup=markup)
 
@@ -145,45 +162,45 @@ async def handler_joke(message: types.Message):
     await bot.send_message(message.chat.id, data['punchline'])
 
 
-@dp.message_handler(commands=['поиск_заметок'])
-async def command_notes(message: types.Message):
-    logging.info(f'A user has started searching for notes {message.from_user.id}')
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
-    await bot.send_message(message.chat.id, "Поиск заметок:", reply_markup=keyboard)
+# @dp.message_handler(commands=['поиск_заметок'])
+# async def command_notes(message: types.Message):
+#     logging.info(f'A user has started searching for notes {message.from_user.id}')
+#     keyboard = types.InlineKeyboardMarkup()
+#     keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
+#     await bot.send_message(message.chat.id, "Поиск заметок:", reply_markup=keyboard)
+#
+#
+# @dp.inline_handler()
+# async def handler_notes(query: types.InlineQuery):
+#     name = query.query.lower()
+#     note_data = session.query(Note).filter((Note.note.contains(name)) &
+#                                            (Note.user_id == query.from_user.id)).limit(20)
+#     save_note_data = []
+#     for i in note_data:
+#         content = types.InputTextMessageContent(
+#             message_text=f'Твоя запись: {i.note}',
+#         )
+#
+#         data = types.InlineQueryResultArticle(
+#             id=i.id,
+#             title=i.note,
+#             description=f'Запись была создана: {i.created_at}',
+#             input_message_content=content
+#         )
+#         save_note_data.append(data)
+#
+#     await bot.answer_inline_query(inline_query_id=query.id, results=save_note_data, cache_time=False)
 
 
-@dp.inline_handler()
-async def handler_notes(query: types.InlineQuery):
-    name = query.query.lower()
-    note_data = session.query(Note).filter((Note.note.contains(name)) &
-                                           (Note.user_id == query.from_user.id)).limit(20)
-    save_note_data = []
-    for i in note_data:
-        content = types.InputTextMessageContent(
-            message_text=f'Твоя запись: {i.note}',
-        )
-
-        data = types.InlineQueryResultArticle(
-            id=i.id,
-            title=i.note,
-            description=f'Запись была создана: {i.created_at}',
-            input_message_content=content
-        )
-        notes.append(data)
-    await bot.answer_inline_query(inline_query_id=query.id, results=save_note_data, cache_time=False)
-
-
-@dp.message_handler(commands='переведи_текст', state='*')
-async def translate_data(message: types.Message):
-    await Form.translate.set()
-    await bot.send_message(message.chat.id, 'Готов переводить:\n<b>(Текст не должен превышать 1000 символов)</b>',
+@dp.message_handler(state='*', commands='переведи_текст')
+async def handler_translate(message: types.Message):
+    await bot.send_message(message.chat.id, 'Правила:\n1.Язык должен быть написан на английском<b>!</b>\n'
+                                            '<b>Пример</b>: Russian или ru\n'
+                                            '2.Доступны почти все языки мира<b>!</b>\n'
+                                            '3.Если вы напишите неправилный язык то перевод будет <b>Неверный!</b>\n'
+                                            '4.Текст не должен превышать 1000 символов<b>!</b>',
                            parse_mode='html')
-
-
-@dp.message_handler(state=Form.translate)
-async def handler_translate(message: types.Message, state: FSMContext):
-    await message.reply('Input source language')
+    await message.reply('На каком языке написан ваш текст?')
     await TranslateForm.lang_src.set()
 
 
@@ -192,7 +209,7 @@ async def handler_translate_lang_src(message: types.Message, state: FSMContext):
     lang_src = message.text
     await state.update_data({'lang_src': lang_src})
 
-    await message.reply('Input destination language')
+    await message.reply('В какой язык вы хотите его перевести?')
     await TranslateForm.lang_dst.set()
 
 
@@ -201,30 +218,69 @@ async def handler_translate_lang_dst(message: types.Message, state: FSMContext):
     lang_dst = message.text
     await state.update_data({'lang_dst': lang_dst})
 
-    await message.reply('Input text')
+    await bot.send_message(message.chat.id, 'Пишите текст:\n'
+                                            '<b>Warning - (Текст не должен превышать 1000 символов)</b>',
+                           parse_mode='html')
     await TranslateForm.execute.set()
 
 
-@dp.message_handler(state=TranslateForm.execute, )
+@dp.message_handler(state=TranslateForm.execute)
 async def handler_translate_execute(message: types.Message, state: FSMContext):
     translator = Translator()
-
     data = await state.get_data()
     lang_src = data.get('lang_src')
     lang_dst = data.get('lang_dst')
+    try:
+        result = translator.translate(message.text[:1000], src=lang_src, dest=lang_dst)
+        query = Translation(user_id=message.from_user.id,
+                            original_text=message.text,
+                            translation_text=result.text,
+                            original_language=result.src,
+                            translation_language=result.dest,
+                            created_at=datetime.datetime.now(),
+                            )
+        session.add(query)
+        session.commit()
+        await bot.send_message(message.chat.id, result.text)
+        await state.finish()
+    except ValueError as e:
+        await bot.send_message(message.chat.id, f'Вы ввели неверный язык - {e}')
+        await handler_translate(message)
+        await state.get_state(None)
 
-    result = translator.translate(message.text[:1000], src=lang_src, dest=lang_dst)
-    query = Translation(user_id=message.from_user.id,
-                        original_text=message.text,
-                        translation_text=result.text,
-                        original_language=result.src,
-                        translation_language=result.dest,
-                        created_at=datetime.datetime.now(),
-                        )
-    session.add(query)
-    session.commit()
-    await bot.send_message(message.chat.id, result.text)
-    await state.finish()
+
+@dp.message_handler(commands='will')
+async def command_test(message: types.Message):
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
+    await bot.send_message(message.chat.id, "Поиск магазинов:", reply_markup=keyboard)
+
+
+@dp.inline_handler()
+async def testing(query: types.InlineQuery):
+    product_name = query.query.lower()
+    save_product_data = []
+    raw = get(f'https://e-catalog.md/ro/search?q={product_name}').text
+    page = fromstring(raw)
+    i = 0
+    for result in page.cssselect("a"):
+        i += 1
+        url = result.get("href")
+        if url.startswith("/url?"):
+            url = parse_qs(urlparse(url).query)['q']
+        else:
+            continue
+        content = types.InputTextMessageContent(
+            message_text=f'Список данных: {url[0]}',
+        )
+        data = types.InlineQueryResultArticle(
+            id=str(i),
+            title=f'Магазин: {url[0]}',
+            description=f'Запись была создана: {datetime.datetime.now()}',
+            input_message_content=content
+        )
+        save_product_data.append(data)
+    await bot.answer_inline_query(inline_query_id=query.id, results=save_product_data, cache_time=False)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,13 @@
 import datetime
 import json
 import os
+import time
 
 import dotenv
 import logging
 import requests
-from urllib.parse import urlparse, parse_qs
 
 from bs4 import BeautifulSoup
-from lxml.html import fromstring
-from requests import get
 
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
@@ -163,36 +161,6 @@ async def handler_joke(message: types.Message):
     await bot.send_message(message.chat.id, data['punchline'])
 
 
-# @dp.message_handler(commands=['поиск_заметок'])
-# async def command_notes(message: types.Message):
-#     logging.info(f'A user has started searching for notes {message.from_user.id}')
-#     keyboard = types.InlineKeyboardMarkup()
-#     keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
-#     await bot.send_message(message.chat.id, "Поиск заметок:", reply_markup=keyboard)
-#
-#
-# @dp.inline_handler()
-# async def handler_notes(query: types.InlineQuery):
-#     name = query.query.lower()
-#     note_data = session.query(Note).filter((Note.note.contains(name)) &
-#                                            (Note.user_id == query.from_user.id)).limit(20)
-#     save_note_data = []
-#     for i in note_data:
-#         content = types.InputTextMessageContent(
-#             message_text=f'Твоя запись: {i.note}',
-#         )
-#
-#         data = types.InlineQueryResultArticle(
-#             id=i.id,
-#             title=i.note,
-#             description=f'Запись была создана: {i.created_at}',
-#             input_message_content=content
-#         )
-#         save_note_data.append(data)
-#
-#     await bot.answer_inline_query(inline_query_id=query.id, results=save_note_data, cache_time=False)
-
-
 @dp.message_handler(state='*', commands='переведи_текст')
 async def handler_translate(message: types.Message):
     await bot.send_message(message.chat.id, 'Правила:\n1.Язык должен быть написан на английском<b>!</b>\n'
@@ -247,19 +215,58 @@ async def handler_translate_execute(message: types.Message, state: FSMContext):
     except ValueError as e:
         await bot.send_message(message.chat.id, f'Вы ввели неверный язык - {e}')
         await handler_translate(message)
-        await state.get_state(None)
+
+
+@dp.inline_handler(lambda query: len(query.query) > 0, state='*')
+async def view_data(query: types.InlineQuery):
+    if query.query.lower().split(':')[0] == 'notes':
+        note_title, save_note_data = await handler_notes(query)
+        await bot.answer_inline_query(note_title, save_note_data, cache_time=False)
+    elif query.query.lower().split(':')[0] == 'shop':
+        product_title, save_product_data = await handler_goods(query)
+        await bot.answer_inline_query(product_title, save_product_data, cache_time=False)
+        await Form.magazine.set()
+
+
+@dp.message_handler(commands=['поиск_заметок'])
+async def command_notes(message: types.Message):
+    logging.info(f'A user has started searching for notes {message.from_user.id}')
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat='notes:'))
+    await bot.send_message(message.chat.id, "Поиск заметок:", reply_markup=keyboard)
+
+
+@dp.inline_handler()
+async def handler_notes(note_title):
+    name = note_title.query.lower().split(':')[-1]
+    note_data = session.query(Note).filter((Note.note.contains(name)) &
+                                           (Note.user_id == note_title.from_user.id)).limit(20)
+    save_note_data = []
+    for i in note_data:
+        content = types.InputTextMessageContent(
+            message_text=f'Твоя запись: {i.note}',
+        )
+
+        data = types.InlineQueryResultArticle(
+            id=i.id,
+            title=i.note,
+            description=f'Запись была создана: {i.created_at}',
+            input_message_content=content
+        )
+        save_note_data.append(data)
+    return note_title.id, save_note_data
 
 
 @dp.message_handler(commands='поиск_в_магазинах')
-async def command_test(message: types.Message):
+async def command_goods(message: types.Message):
     keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat=''))
+    keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat='shop:'))
     await bot.send_message(message.chat.id, "Поиск магазинов:", reply_markup=keyboard)
 
 
 @dp.inline_handler()
-async def testing(query: types.InlineQuery):
-    product_name = query.query.lower()
+async def handler_goods(product_title):
+    product_name = product_title.query.lower().split(':')[-1]
     save_product_data = []
     i = 0
     r = requests.get(f'https://e-catalog.md/ro/search?q={product_name}')
@@ -268,28 +275,49 @@ async def testing(query: types.InlineQuery):
     for el in html.select('.products-list__body > .products-list__item'):
         image = el.select('.product-card > .product-card__image > a > img')
         title = el.select('.product-card > .product-card__info > .product-card__name > a')
-        price = el.select('.product-card > .product-card__actions > .product-card__prices > span')
+        # price = el.select('.product-card > .product-card__actions > .product-card__prices > span')
 
         content = types.InputTextMessageContent(
-            message_text=f'Ссылка на товар: {title[0].get("href")}',
+            message_text=title[0].get('href')
         )
         i += 1
-        try:
-            data = types.InlineQueryResultArticle(
-                id=str(i),
-                title=f'Название: {title[0].text}',
-                description=f'Цена: {price[0].text}',
-                input_message_content=content,
-                thumb_url=image[0].get('src'),
-                thumb_width=48,
-                thumb_height=48
 
-            )
-            save_product_data.append(data)
-        except IndexError:
+        data = types.InlineQueryResultArticle(
+            id=str(i),
+            title=f'Название: {title[0].text}',
+            description=f'Цена: ',
+            # {price[0].text}
+            input_message_content=content,
+            thumb_url=image[0].get('src'),
+            thumb_width=48,
+            thumb_height=48
+
+        )
+        save_product_data.append(data)
+        continue
+    return product_title.id, save_product_data
+
+
+@dp.message_handler(state=Form.magazine)
+async def detail_good(message: types.Message, state: FSMContext):
+    detail_goods = message.text
+    await state.update_data({'detail_goods': detail_goods})
+    data = await state.get_data()
+    data = data.get('detail_goods')
+    try:
+        request = requests.get(data)
+        html_content = BeautifulSoup(request.text, 'html.parser')
+    except Exception as e:
+        await state.finish()
+        logging.info(f'Basic search error with user {message.from_user.id}. GREEN code - {e}')
+    else:
+        for detail_data in html_content.select('.product-tabs'):
+            detail_spec = detail_data.select('.product-tabs__content > .product-tabs__pane > .spec > .spec__section')
+            await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
+            await asyncio.sleep(2)
+            await bot.send_message(message.chat.id, detail_spec[0].text.replace("  ", ""))
+            await state.finish()
             continue
-
-    await bot.answer_inline_query(inline_query_id=query.id, results=save_product_data, cache_time=False)
 
 
 if __name__ == "__main__":

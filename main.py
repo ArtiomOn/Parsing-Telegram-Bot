@@ -269,33 +269,45 @@ async def handler_goods(product_title):
     product_name = product_title.query.lower().split(':')[-1]
     save_product_data = []
     i = 0
-    r = requests.get(f'https://e-catalog.md/ro/search?q={product_name}')
-    html = BeautifulSoup(r.text, 'html.parser')
+    page = 1
+    elements = 0
+    while True:
+        r = requests.get(f'https://e-catalog.md/ro/search?q={product_name}&page={page}')
+        html = BeautifulSoup(r.text, 'html.parser')
+        items = html.select('.products-list__body > .products-list__item')
+        if len(items):
+            for el in items:
+                if elements == 20:
+                    break
+                else:
+                    image = el.select('.product-card > .product-card__image > a > img')
+                    title = el.select('.product-card > .product-card__info > .product-card__name > a')
+                    price = el.select('.product-card > .product-card__actions > .product-card__prices > span')
 
-    for el in html.select('.products-list__body > .products-list__item'):
-        image = el.select('.product-card > .product-card__image > a > img')
-        title = el.select('.product-card > .product-card__info > .product-card__name > a')
-        # price = el.select('.product-card > .product-card__actions > .product-card__prices > span')
+                    if not price:
+                        price = 'Not found'
+                    else:
+                        price = price[0].text
 
-        content = types.InputTextMessageContent(
-            message_text=title[0].get('href')
-        )
-        i += 1
+                    content = types.InputTextMessageContent(
+                        message_text=title[0].get('href')
+                    )
+                    i += 1
+                    elements += 1
+                    data = types.InlineQueryResultArticle(
+                        id=str(i),
+                        title=f'Название: {title[0].text}',
+                        description=f'Цена: {price}',
+                        input_message_content=content,
+                        thumb_url=image[0].get('src'),
+                        thumb_width=48,
+                        thumb_height=48
 
-        data = types.InlineQueryResultArticle(
-            id=str(i),
-            title=f'Название: {title[0].text}',
-            description=f'Цена: ',
-            # {price[0].text}
-            input_message_content=content,
-            thumb_url=image[0].get('src'),
-            thumb_width=48,
-            thumb_height=48
-
-        )
-        save_product_data.append(data)
-        continue
-    return product_title.id, save_product_data
+                    )
+                    save_product_data.append(data)
+                    continue
+            page += 1
+        return product_title.id, save_product_data
 
 
 @dp.message_handler(state=Form.magazine)

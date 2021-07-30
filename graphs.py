@@ -29,14 +29,13 @@ def draw_font_table(path, labelr, labelc):
 
     fig, ax = plt.subplots(figsize=(6, 3))
     ax.set_axis_off()
-
     table = ax.table(
-        # cellText=[labelc] * 1,
-        rowLabels=[labelc] * 1,
-        colLabels=[labelr] * 1,
+        cellText=[labelr] * len(labelc),
+        rowLabels=[labelc] * len(labelc),
+        colLabels=['description'] * 1,
         # rowColours=["palegreen"],
         # colColours=[["palegreen"] * 4],
-        cellColours=[[".95" for c in range(1)] for r in range(1)],
+        cellColours=[[".95" for c in range(len(labelc))] for r in range(5)],
         # cellText='palegreen',
         cellLoc='center',
         loc='upper center',

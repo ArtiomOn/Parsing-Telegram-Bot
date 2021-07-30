@@ -1,21 +1,18 @@
 import datetime
 import json
+import logging
 import os
-import time
 
 import dotenv
-import logging
 import requests
-
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import StatesGroup, State
 from bs4 import BeautifulSoup
-
+from googletrans import Translator
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
-from googletrans import Translator
-from aiogram.dispatcher import FSMContext
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters.state import StatesGroup, State
-from aiogram import Bot, Dispatcher, executor, types
 
 from models import database_dsn, Note, Translation
 

@@ -15,6 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
 
 from models import database_dsn, Note, Translation
+from graphs import draw_font_table
 
 logging.basicConfig(level=logging.INFO)
 
@@ -312,22 +313,29 @@ async def detail_good(message: types.Message, state: FSMContext):
     detail_goods = message.text
     await state.update_data({'detail_goods': detail_goods})
     data = await state.get_data()
+
     data = data.get('detail_goods')
     try:
         request = requests.get(data)
         html_content = BeautifulSoup(request.text, 'html.parser')
+        await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
+        await asyncio.sleep(2)
     except Exception as e:
         await state.finish()
         logging.info(f'Basic search error with user {message.from_user.id}. GREEN code - {e}')
     else:
-        for detail_data in html_content.select('.product-tabs'):
-            detail_spec = detail_data.select('.product-tabs__content > .product-tabs__pane > .spec > .spec__section')
-            await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
-            await asyncio.sleep(2)
-            await bot.send_message(message.chat.id, detail_spec[0].text.replace("  ", ""))
+        column = []
+        row = []
+        for detail_data in html_content.select(
+                '.product-tabs > .product-tabs__content > .product-tabs__pane > .spec > .spec__section > .spec__row'):
+            title = detail_data.select('.spec__name')
+            detail = detail_data.select('.spec__value')
+            await bot.send_message(message.chat.id, f'{title[0].text} = {detail[0].text}')
+            row.append(title[0].text)
+            column.append(detail[0].text)
             await state.finish()
             continue
-
+        draw_font_table(None, row, column)
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)

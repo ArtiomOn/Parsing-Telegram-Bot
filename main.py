@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
 
 from models import database_dsn, Note, Translation
-from graphs import draw_font_table
+from graphs import draw_goods_characteristics, draw_goods_comments
 
 logging.basicConfig(level=logging.INFO)
 
@@ -309,33 +309,43 @@ async def handler_goods(product_title):
 
 
 @dp.message_handler(state=Form.magazine)
-async def detail_good(message: types.Message, state: FSMContext):
+async def detail_goods(message: types.Message, state: FSMContext):
+    column = []
+    row = []
+    comments_author = []
+    comments_content = []
+    comments_date = []
     detail_goods = message.text
     await state.update_data({'detail_goods': detail_goods})
     data = await state.get_data()
 
     data = data.get('detail_goods')
+    await state.finish()
+    request = requests.get(data)
+    html_content = BeautifulSoup(request.text, 'html.parser')
+    await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
+    for detail_data in html_content.select('.spec > .spec__section > .spec__row'):
+        title = detail_data.select('.spec__name')
+        detail = detail_data.select('.spec__value')
+        row.append(title[0].text)
+        column.append(detail[0].text)
+        continue
+    characteristic_image = draw_goods_characteristics(column, row)
+    await bot.send_photo(chat_id=message.chat.id, photo=characteristic_image)
     try:
-        request = requests.get(data)
-        html_content = BeautifulSoup(request.text, 'html.parser')
-        await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
-        await asyncio.sleep(2)
-    except Exception as e:
-        await state.finish()
-        logging.info(f'Basic search error with user {message.from_user.id}. GREEN code - {e}')
-    else:
-        column = []
-        row = []
-        for detail_data in html_content.select(
-                '.product-tabs > .product-tabs__content > .product-tabs__pane > .spec > .spec__section > .spec__row'):
-            title = detail_data.select('.spec__name')
-            detail = detail_data.select('.spec__value')
-            await bot.send_message(message.chat.id, f'{title[0].text} = {detail[0].text}')
-            row.append(title[0].text)
-            column.append(detail[0].text)
-            await state.finish()
+        for detail_comments in html_content.select('.reviews-list__content > .reviews-list__item'):
+            author = detail_comments.select('.review > .review__content > .review__author')
+            text = detail_comments.select('.review > .review__content > .review__text')
+            date = detail_comments.select('.review > .review__content > .review__date')
+            comments_author.append(author[0].text)
+            comments_content.append(text[0].text)
+            comments_date.append(date[0].text)
             continue
-        draw_font_table(None, row, column)
+        comments_image = draw_goods_comments(comments_author, comments_content, comments_date)
+    except:
+        await bot.send_message(message.chat.id, 'Not found comments')
+    else:
+        await bot.send_photo(chat_id=message.chat.id, photo=comments_image)
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(dp, skip_updates=False)

@@ -309,67 +309,136 @@ async def handler_goods(product_title):
 
 
 @dp.message_handler(state=Form.magazine)
-async def detail_description_goods(message: types.Message, state: FSMContext):
+async def description_detail_goods(message: types.Message, state: FSMContext):
     column = []
     row = []
-    comments_author = []
-    comments_content = []
-    comments_date = []
     table = []
-    formatted_text = []
 
-    detail_goods = message.text
-    await state.update_data({'detail_goods': detail_goods})
+    detail_description_goods = message.text
+    await state.update_data({'detail_goods': detail_description_goods})
     data = await state.get_data()
 
     data = data.get('detail_goods')
-    await state.finish()
-    request = requests.get(data)
-    html_content = BeautifulSoup(request.text, 'html.parser')
-    await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
-    for detail_data in html_content.select('.spec > .spec__section > .spec__row'):
-        title = detail_data.select('.spec__name')
-        detail = detail_data.select('.spec__value')
-        row.append(title[0].text)
-        column.append(detail[0].text)
-        continue
+    try:
+        request = requests.get(data)
+    except:
+        await bot.send_message(message.chat.id, 'Пожалуйста, ничего не пишите в чат и попробуйте снова!')
+        await state.finish()
+    else:
+        html_content = BeautifulSoup(request.text, 'html.parser')
+        await bot.send_message(message.chat.id, 'Одну секунду, собираю информацию...')
+        await bot.send_message(message.chat.id, 'Советую перевернуть телефон в горизонтальное положение!')
+        await asyncio.sleep(2)
+        for detail_data in html_content.select('.spec > .spec__section > .spec__row'):
+            title = detail_data.select('.spec__name')
+            detail = detail_data.select('.spec__value')
+            row.append(title[0].text)
+            column.append(detail[0].text)
+            continue
 
-    headers = ["Category", "Description"]
+        headers = ["Category", "Description"]
 
-    def group_by_length(words, length=100):
-        current_index = 0
-        current_length = 0
-        for k, word in enumerate(words):
-            current_length += len(word) + 1
-            if current_length > length:
-                yield words[current_index:k]
-                current_index = k
-                current_length = len(word)
-        else:
-            yield words[current_index:]
+        for i in range(len(column)):
+            table.append([row[i], column[i]])
+        data = tabulate(tabular_data=table, headers=headers, tablefmt="fancy_grid")
+        await bot.send_message(message.chat.id, 'Характеристики товара:')
+        await asyncio.sleep(1)
+        await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+        await comment_detail_goods(message, state)
 
-    for i in range(len(column)):
-        table.append([row[i], column[i]])
-    data = tabulate(tabular_data=table, headers=headers, tablefmt="grid")
-    await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
-    for detail_comments in html_content.select('.reviews-list__content > .reviews-list__item'):
-        author = detail_comments.select('.review > .review__content > .review__author')
-        text = detail_comments.select('.review > .review__content > .review__text')
-        date = detail_comments.select('.review > .review__content > .review__date')
-        comments_author.append(author[0].text)
-        comments_content.append(text[0].text)
-        comments_date.append(date[0].text)
-        formatted_text.append('\n'.join(' '.join(row) for row in group_by_length(text[0].text.split(' '), 50)))
-        continue
 
-    header = ["User", "Date", "Content"]
+@dp.message_handler(state=Form.magazine)
+async def comment_detail_goods(message: types.Message, state: FSMContext):
+    comments_author = []
+    comments_content = []
+    comments_date = []
+    formatted_text = []
     tb = []
 
-    for i in range(len(comments_content)):
-        tb.append([comments_author[i], comments_date[i], formatted_text[i]])
+    data_state = await state.get_data()
+    data = data_state.get('detail_goods')
 
+    try:
+        request = requests.get(data)
+    except:
+        await bot.send_message(message.chat.id, 'Пожалуйста, ничего не пишите в чат и попробуйте снова!')
+        # await state.finish()
+    else:
+        html_content = BeautifulSoup(request.text, 'html.parser')
+
+        def group_by_length(words, length=100):
+            current_index = 0
+            current_length = 0
+            for k, word in enumerate(words):
+                current_length += len(word) + 1
+                if current_length > length:
+                    yield words[current_index:k]
+                    current_index = k
+                    current_length = len(word)
+            else:
+                yield words[current_index:]
+
+        for detail_comments in html_content.select('.reviews-list__content > .reviews-list__item'):
+            author = detail_comments.select('.review > .review__content > .review__author')
+            text = detail_comments.select('.review > .review__content > .review__text')
+            date = detail_comments.select('.review > .review__content > .review__date')
+            comments_author.append(author[0].text)
+            comments_content.append(text[0].text)
+            comments_date.append(date[0].text)
+            formatted_text.append('\n'.join(' '.join(row) for row in group_by_length(text[0].text.split(' '), 50)))
+            continue
+        await bot.send_message(message.chat.id, 'Отзывы:')
+        if not comments_author:
+            await bot.send_message(message.chat.id, 'К сожеленю, отзывов у данного товара нету')
+            await shop_detail_goods(message, state)
+            # await state.finish()
+        else:
+            header = ["User", "Date", "Content"]
+            for i in range(len(comments_content)):
+                tb.append([comments_author[i], comments_date[i], formatted_text[i]])
+
+            data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
+            await asyncio.sleep(1)
+            await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+            await shop_detail_goods(message, state)
+
+
+@dp.message_handler(state=Form.magazine)
+async def shop_detail_goods(message: types.Message, state: FSMContext):
+    data_state = await state.get_data()
+    data = data_state.get('detail_goods')
+    shop_name = []
+    shop_price = []
+    shop_status = []
+    shop_link = []
+    tb = []
+    count = 0
+
+    request = requests.get(data)
+    await state.finish()
+    html_content = BeautifulSoup(request.text, 'html.parser')
+    for detail_shop in html_content.select('.listing_container > .available'):
+        image = detail_shop.select('.item_info > .item_merchant > .merchant_logo > img')
+        price = detail_shop.select('.item_price > .item_basic_price')
+        # available = detail_shop.select('.item_price > .item_availability > span')
+        link = detail_shop.select('.item_actions > a')
+
+        shop_name.append(image[0].get('alt'))
+        shop_price.append(price[0].text)
+        # shop_status.append(available[0].get('title'))
+        shop_link.append(link[0].get('href'))
+        continue
+    await bot.send_message(message.chat.id, 'Магазины:')
+
+    header = ["Name", "Price", "Link"]
+
+    for i in range(len(shop_name)):
+        tb.append([shop_name[i], shop_price[i], shop_link[i]])
+        count += 1
+        if count == 7:
+            break
     data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
-    await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+    await bot.send_message(message.chat.id, f'```{data}```', parse_mode="MarkdownV2")
 
 
 if __name__ == "__main__":

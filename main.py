@@ -37,19 +37,15 @@ class TranslateForm(StatesGroup):
 class Form(StatesGroup):
     repeat = State()
     note = State()
-    magazine = State()
-
-
-technical_site = 'site:darwin.md'
+    shop = State()
 
 
 @dp.message_handler(commands=['start'])
 async def send_greeting(message: types.Message):
-    sti = open('static/car.gif', 'rb')
-    await bot.send_sticker(message.chat.id, sti)
-    me = await bot.get_me()
-    await message.reply(f'Привет, я <b>{me.first_name}</b>\n'
-                        f'Готов тебе служить - <b>{message.chat.first_name}</b>', parse_mode='html')
+    await bot.send_message(message.chat.id, f'Привет, я Пиксель, самый маленький член семьи, '
+                                            f'но служу так, что позавидуют многие 😊\n\n'
+                                            f'С чего начем <b>{message.chat.first_name}</b>? '
+                                            f'Подсказка - /menu', parse_mode='html')
 
 
 @dp.message_handler(commands=['menu'])
@@ -60,16 +56,21 @@ async def create_menu(message: types.Message):
             types.KeyboardButton('/заметки'),
         ],
         [
-            types.KeyboardButton('/случайная_шутка'),
-            types.KeyboardButton('/переведи_текст'),
-        ],
-        [
+            types.KeyboardButton('/дополнительно'),
             types.KeyboardButton('/поиск_в_магазинах')
         ],
-
     ])
 
     await bot.send_message(message.chat.id, 'Меню:', reply_markup=markup)
+
+
+@dp.message_handler(commands=['повторяй_за_мной'], state='*')
+async def command_repeat(message: types.Message):
+    logging.info(f'The bot started repeating after the user {message.from_user.id}')
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[types.KeyboardButton('/отключить_повторение')]],
+                                       one_time_keyboard=True)
+    await Form.repeat.set()
+    await message.reply('Напиши что-то:', reply_markup=markup)
 
 
 @dp.message_handler(state='*', commands='отключить_повторение')
@@ -81,15 +82,6 @@ async def handler_cancel(message: types.Message, state: FSMContext):
     logging.info('Cancelling state %r', current_state)
     await state.finish()
     await message.reply('Успешно')
-
-
-@dp.message_handler(commands=['повторяй_за_мной'], state='*')
-async def command_repeat(message: types.Message):
-    logging.info(f'The bot started repeating after the user {message.from_user.id}')
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[types.KeyboardButton('/отключить_повторение')]],
-                                       one_time_keyboard=True)
-    await Form.repeat.set()
-    await message.reply('Напиши что-то:', reply_markup=markup)
 
 
 @dp.message_handler(state=Form.repeat)
@@ -108,6 +100,17 @@ async def notes(message: types.Message):
         ],
         [
             types.KeyboardButton('/поиск_заметок'),
+        ],
+    ])
+    await message.reply('Выберите:', reply_markup=markup)
+
+
+@dp.message_handler(state='*', commands='дополнительно')
+async def additional_features(message: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
+        [
+            types.KeyboardButton('/случайная_шутка'),
+            types.KeyboardButton('/переведи_текст')
         ],
     ])
     await message.reply('Выберите:', reply_markup=markup)
@@ -213,6 +216,7 @@ async def handler_translate_execute(message: types.Message, state: FSMContext):
     except ValueError as e:
         await bot.send_message(message.chat.id, f'Вы ввели неверный язык - {e}')
         await handler_translate(message)
+        logging.info(f'User {message.from_user.id} translated the text')
 
 
 @dp.inline_handler(lambda query: len(query.query) > 0, state='*')
@@ -223,7 +227,7 @@ async def view_data(query: types.InlineQuery):
     elif query.query.lower().split(':')[0] == 'shop':
         product_title, save_product_data = await handler_goods(query)
         await bot.answer_inline_query(product_title, save_product_data, cache_time=False)
-        await Form.magazine.set()
+        await Form.shop.set()
 
 
 @dp.message_handler(commands=['поиск_заметок'])
@@ -257,9 +261,10 @@ async def handler_notes(note_title):
 
 @dp.message_handler(commands='поиск_в_магазинах')
 async def command_goods(message: types.Message):
+    logging.info(f'User {message.from_user.id} started searching for products')
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton('Поиск', switch_inline_query_current_chat='shop:'))
-    await bot.send_message(message.chat.id, "Поиск магазинов:", reply_markup=keyboard)
+    await bot.send_message(message.chat.id, "Поиск товаров:", reply_markup=keyboard)
 
 
 @dp.inline_handler()
@@ -308,7 +313,7 @@ async def handler_goods(product_title):
         return product_title.id, save_product_data
 
 
-@dp.message_handler(state=Form.magazine)
+@dp.message_handler(state=Form.shop)
 async def description_detail_goods(message: types.Message, state: FSMContext):
     column = []
     row = []
@@ -321,7 +326,8 @@ async def description_detail_goods(message: types.Message, state: FSMContext):
     data = data.get('detail_goods')
     try:
         request = requests.get(data)
-    except:
+    except Exception as e:
+        logging.info(f'User with id {message.from_user.id} violated parsing processing. Error: {e}')
         await bot.send_message(message.chat.id, 'Пожалуйста, ничего не пишите в чат и попробуйте снова!')
         await state.finish()
     else:
@@ -347,7 +353,7 @@ async def description_detail_goods(message: types.Message, state: FSMContext):
         await comment_detail_goods(message, state)
 
 
-@dp.message_handler(state=Form.magazine)
+@dp.message_handler(state=Form.shop)
 async def comment_detail_goods(message: types.Message, state: FSMContext):
     comments_author = []
     comments_content = []
@@ -360,9 +366,10 @@ async def comment_detail_goods(message: types.Message, state: FSMContext):
 
     try:
         request = requests.get(data)
-    except:
+    except Exception as e:
+        logging.info(f'User with id {message.from_user.id} violated parsing processing. Error: {e}')
         await bot.send_message(message.chat.id, 'Пожалуйста, ничего не пишите в чат и попробуйте снова!')
-        # await state.finish()
+        await state.finish()
     else:
         html_content = BeautifulSoup(request.text, 'html.parser')
 
@@ -391,7 +398,6 @@ async def comment_detail_goods(message: types.Message, state: FSMContext):
         if not comments_author:
             await bot.send_message(message.chat.id, 'К сожеленю, отзывов у данного товара нету')
             await shop_detail_goods(message, state)
-            # await state.finish()
         else:
             header = ["User", "Date", "Content"]
             for i in range(len(comments_content)):
@@ -403,16 +409,16 @@ async def comment_detail_goods(message: types.Message, state: FSMContext):
             await shop_detail_goods(message, state)
 
 
-@dp.message_handler(state=Form.magazine)
+@dp.message_handler(state=Form.shop)
 async def shop_detail_goods(message: types.Message, state: FSMContext):
-    data_state = await state.get_data()
-    data = data_state.get('detail_goods')
     shop_name = []
     shop_price = []
-    shop_status = []
     shop_link = []
     tb = []
     count = 0
+
+    data_state = await state.get_data()
+    data = data_state.get('detail_goods')
 
     request = requests.get(data)
     await state.finish()
@@ -420,12 +426,10 @@ async def shop_detail_goods(message: types.Message, state: FSMContext):
     for detail_shop in html_content.select('.listing_container > .available'):
         image = detail_shop.select('.item_info > .item_merchant > .merchant_logo > img')
         price = detail_shop.select('.item_price > .item_basic_price')
-        # available = detail_shop.select('.item_price > .item_availability > span')
         link = detail_shop.select('.item_actions > a')
 
         shop_name.append(image[0].get('alt'))
         shop_price.append(price[0].text)
-        # shop_status.append(available[0].get('title'))
         shop_link.append(link[0].get('href'))
         continue
     await bot.send_message(message.chat.id, 'Магазины:')

@@ -13,9 +13,9 @@ from bs4 import BeautifulSoup
 from googletrans import Translator
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
+from tabulate import tabulate
 
 from models import database_dsn, Note, Translation
-from graphs import draw_goods_characteristics, draw_goods_comments
 
 logging.basicConfig(level=logging.INFO)
 
@@ -309,12 +309,15 @@ async def handler_goods(product_title):
 
 
 @dp.message_handler(state=Form.magazine)
-async def detail_goods(message: types.Message, state: FSMContext):
+async def detail_description_goods(message: types.Message, state: FSMContext):
     column = []
     row = []
     comments_author = []
     comments_content = []
     comments_date = []
+    table = []
+    formatted_text = []
+
     detail_goods = message.text
     await state.update_data({'detail_goods': detail_goods})
     data = await state.get_data()
@@ -330,22 +333,44 @@ async def detail_goods(message: types.Message, state: FSMContext):
         row.append(title[0].text)
         column.append(detail[0].text)
         continue
-    characteristic_image = draw_goods_characteristics(column, row)
-    await bot.send_photo(chat_id=message.chat.id, photo=characteristic_image)
-    try:
-        for detail_comments in html_content.select('.reviews-list__content > .reviews-list__item'):
-            author = detail_comments.select('.review > .review__content > .review__author')
-            text = detail_comments.select('.review > .review__content > .review__text')
-            date = detail_comments.select('.review > .review__content > .review__date')
-            comments_author.append(author[0].text)
-            comments_content.append(text[0].text)
-            comments_date.append(date[0].text)
-            continue
-        comments_image = draw_goods_comments(comments_author, comments_content, comments_date)
-    except:
-        await bot.send_message(message.chat.id, 'Not found comments')
-    else:
-        await bot.send_photo(chat_id=message.chat.id, photo=comments_image)
+
+    headers = ["Category", "Description"]
+
+    def group_by_length(words, length=100):
+        current_index = 0
+        current_length = 0
+        for k, word in enumerate(words):
+            current_length += len(word) + 1
+            if current_length > length:
+                yield words[current_index:k]
+                current_index = k
+                current_length = len(word)
+        else:
+            yield words[current_index:]
+
+    for i in range(len(column)):
+        table.append([row[i], column[i]])
+    data = tabulate(tabular_data=table, headers=headers, tablefmt="grid")
+    await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+    for detail_comments in html_content.select('.reviews-list__content > .reviews-list__item'):
+        author = detail_comments.select('.review > .review__content > .review__author')
+        text = detail_comments.select('.review > .review__content > .review__text')
+        date = detail_comments.select('.review > .review__content > .review__date')
+        comments_author.append(author[0].text)
+        comments_content.append(text[0].text)
+        comments_date.append(date[0].text)
+        formatted_text.append('\n'.join(' '.join(row) for row in group_by_length(text[0].text.split(' '), 50)))
+        continue
+
+    header = ["User", "Date", "Content"]
+    tb = []
+
+    for i in range(len(comments_content)):
+        tb.append([comments_author[i], comments_date[i], formatted_text[i]])
+
+    data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
+    await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=False)

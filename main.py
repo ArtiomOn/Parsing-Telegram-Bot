@@ -57,8 +57,8 @@ async def bot_create_main_menu(message: types.Message):
         ],
         [
             types.KeyboardButton('/additional_functionality'),
-            types.KeyboardButton('/product_search')
-        ],
+            types.KeyboardButton('/product_search'),
+        ]
     ])
 
     await bot.send_message(message.chat.id, 'Menu:', reply_markup=markup)
@@ -72,8 +72,11 @@ async def bot_create_command_exit_main_menu(message: types.Message):
 @dp.message_handler(commands=['repeat_by_me'], state='*')
 async def bot_create_command_repeat(message: types.Message):
     logging.info(f'The bot started repeating after the user {message.from_user.id}')
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[types.KeyboardButton('/cancel_repetition')]],
-                                       one_time_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
+        [
+            types.KeyboardButton('/cancel_repetition')
+        ]
+    ], one_time_keyboard=True)
     await Form.repeat.set()
     await message.reply('Write something:', reply_markup=markup)
 
@@ -147,8 +150,8 @@ async def bot_handler_save_note(message: types.Message, state: FSMContext):
 async def bot_view_last_note(message: types.Message, state: FSMContext):
     logging.info(f'The last note was viewed by the user {message.from_user.id}')
     try:
-        my_note = session.query(Note).filter(Note.user_id == message.from_user.id).order_by(Note.id.desc()).first()
-        await bot.send_message(message.chat.id, my_note.note)
+        note_data = session.query(Note).filter(Note.user_id == message.from_user.id).order_by(Note.id.desc()).first()
+        await bot.send_message(message.chat.id, note_data.note)
         await state.finish()
     except AttributeError as e:
         await bot.send_message(message.chat.id, f"You don't have any notes yet\n")
@@ -174,8 +177,7 @@ async def bot_create_command_translate(message: types.Message):
                                             '<b>Example</b>: Russian or ru\n'
                                             '2.Almost all languages of the world are available<b>!</b>\n'
                                             '3.If you write the wrong language the translation will be <b>Wrong!</b>\n'
-                                            '4.Text must not exceed 1000 characters<b>!</b>',
-                           parse_mode='html')
+                                            '4.Text must not exceed 1000 characters<b>!</b>', parse_mode='html')
     await message.reply('In what language your text is written?')
     await TranslateForm.lang_src.set()
 
@@ -184,7 +186,6 @@ async def bot_create_command_translate(message: types.Message):
 async def handler_translate_lang_src(message: types.Message, state: FSMContext):
     lang_src = message.text
     await state.update_data({'lang_src': lang_src})
-
     await message.reply('In which language do you want to translate it?')
     await TranslateForm.lang_dst.set()
 
@@ -195,17 +196,16 @@ async def handler_translate_lang_dst(message: types.Message, state: FSMContext):
     await state.update_data({'lang_dst': lang_dst})
 
     await bot.send_message(message.chat.id, 'Write your text:\n'
-                                            '<b>Warning - (Text must not exceed 1000 characters)</b>',
-                           parse_mode='html')
+                                            '<b>Warning - Text must not exceed 1000 characters</b>', parse_mode='html')
     await TranslateForm.execute.set()
 
 
 @dp.message_handler(state=TranslateForm.execute)
 async def handler_translate_execute(message: types.Message, state: FSMContext):
     translator = Translator()
-    data = await state.get_data()
-    lang_src = data.get('lang_src')
-    lang_dst = data.get('lang_dst')
+    state_data = await state.get_data()
+    lang_src = state_data.get('lang_src')
+    lang_dst = state_data.get('lang_dst')
     try:
         result = translator.translate(message.text[:1000], src=lang_src, dest=lang_dst)
         query = Translation(user_id=message.from_user.id,
@@ -246,8 +246,8 @@ async def bot_create_command_note(message: types.Message):
 
 @dp.inline_handler()
 async def bot_handler_note(note_title):
-    name = note_title.query.lower().split(':')[-1]
-    note_data = session.query(Note).filter((Note.note.contains(name)) &
+    title = note_title.query.lower().split(':')[-1]
+    note_data = session.query(Note).filter((Note.note.contains(title)) &
                                            (Note.user_id == note_title.from_user.id)).limit(20)
     save_note_data = []
     for i in note_data:
@@ -275,13 +275,14 @@ async def bot_create_command_goods(message: types.Message):
 
 @dp.inline_handler()
 async def bot_handler_goods(product_title):
-    product_name = product_title.query.lower().split(':')[-1]
-    save_product_data = []
     i = 0
     page = 1
     elements = 0
+
+    product = product_title.query.lower().split(':')[-1]
+    save_product_data = []
     while True:
-        r = requests.get(f'https://e-catalog.md/ro/search?q={product_name}&page={page}')
+        r = requests.get(f'https://e-catalog.md/ro/search?q={product}&page={page}')
         html = BeautifulSoup(r.text, 'html.parser')
         items = html.select('.products-list__body > .products-list__item')
         if len(items):
@@ -326,11 +327,11 @@ async def bot_detail_specifications_goods(message: types.Message, state: FSMCont
     row = []
     table = []
 
-    detail_description_goods = message.text
-    await state.update_data({'detail_goods': detail_description_goods})
+    detail_goods = message.text
+    await state.update_data({'detail_goods': detail_goods})
     data = await state.get_data()
-
     data = data.get('detail_goods')
+
     try:
         request = requests.get(data)
     except Exception as e:
@@ -402,11 +403,12 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
             await bot.send_message(message.chat.id, 'Unfortunately, this product has no reviews! 😢')
             await bot_detail_offer_goods(message, state)
         else:
-            header = ["User", "Date", "Content"]
             for i in range(len(comments_content)):
                 tb.append([comments_author[i], comments_date[i], formatted_text[i]])
 
-            data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
+            data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=["User", "Date", "Content"],
+                            stralign='left')
+
             await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
             await bot_detail_offer_goods(message, state)
 
@@ -439,16 +441,16 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
             shop_name.append(image[0].get('alt'))
             shop_price.append(price[0].text)
             shop_link.append(link[0].get('href'))
-        await bot.send_message(message.chat.id, 'Offers:')
 
-        header = ["Name", "Price", "Link"]
+        await bot.send_message(message.chat.id, 'Offers:')
 
         for i in range(len(shop_name)):
             tb.append([shop_name[i], shop_price[i], shop_link[i]])
-            count += 1
             if count == 7:
                 break
-        data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
+            count += 1
+
+        data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=["Name", "Price", "Link"], stralign='left')
         await bot.send_message(message.chat.id, f'```{data}```', parse_mode="MarkdownV2")
 
 

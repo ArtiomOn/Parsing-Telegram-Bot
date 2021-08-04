@@ -42,10 +42,10 @@ class Form(StatesGroup):
 
 @dp.message_handler(commands=['start'])
 async def bot_send_greeting(message: types.Message):
-    await bot.send_message(message.chat.id, f'Привет, я Пиксель, самый маленький член семьи, '
-                                            f'но служу так, что позавидуют многие 😊\n\n'
-                                            f'С чего начем <b>{message.chat.first_name}</b>? '
-                                            f'Подсказка - /menu', parse_mode='html')
+    await bot.send_message(message.chat.id, f'Привіт, я Піксель, найменший член родини, '
+                                            f'але я служу так, що багатьом позаздрять 😊\n\n'
+                                            f'З чого почнемо <b>{message.chat.first_name}</b>? '
+                                            f'Підказка - /menu', parse_mode='html')
 
 
 @dp.message_handler(commands=['menu'])
@@ -99,7 +99,7 @@ async def bot_create_note_menu(message: types.Message):
             types.KeyboardButton('/last_note'),
         ],
         [
-            types.KeyboardButton('/search_notes'),
+            types.KeyboardButton('/search_note'),
         ],
         [
             types.KeyboardButton('/exit')
@@ -236,7 +236,7 @@ async def bot_inline_handler(query: types.InlineQuery):
         await Form.shop.set()
 
 
-@dp.message_handler(commands=['search_notes'])
+@dp.message_handler(commands=['search_note'])
 async def bot_create_command_note(message: types.Message):
     logging.info(f'A user has started searching for notes {message.from_user.id}')
     keyboard = types.InlineKeyboardMarkup()
@@ -298,11 +298,13 @@ async def bot_handler_goods(product_title):
                     else:
                         price = price[0].text
 
+                    i += 1
+                    elements += 1
+
                     content = types.InputTextMessageContent(
                         message_text=title[0].get('href')
                     )
-                    i += 1
-                    elements += 1
+
                     data = types.InlineQueryResultArticle(
                         id=str(i),
                         title=f'Title: {title[0].text}',
@@ -351,7 +353,6 @@ async def bot_detail_specifications_goods(message: types.Message, state: FSMCont
             table.append([row[i], column[i]])
         data = tabulate(tabular_data=table, headers=headers, tablefmt="fancy_grid")
         await bot.send_message(message.chat.id, 'Product characteristics:')
-        await asyncio.sleep(1)
         await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
         await bot_detail_reviews_goods(message, state)
 
@@ -406,7 +407,6 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
                 tb.append([comments_author[i], comments_date[i], formatted_text[i]])
 
             data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=header, stralign='left')
-            await asyncio.sleep(1)
             await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
             await bot_detail_offer_goods(message, state)
 

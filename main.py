@@ -365,7 +365,7 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
     comments_content = []
     comments_date = []
     formatted_text = []
-    tb = []
+    data_test = []
 
     data_state = await state.get_data()
     data = data_state.get('detail_goods')
@@ -405,12 +405,11 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
             await bot_detail_offer_goods(message, state)
         else:
             for i in range(len(comments_content)):
-                tb.append([comments_author[i], comments_date[i], formatted_text[i]])
+                data_test.append(f"{comments_author[i]} || {comments_date[i]} || {comments_content[i]}")
 
-            data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=["User", "Date", "Content"],
-                            stralign='left')
-
-            await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+            link_data = "\n----------------------------------------------------------------" \
+                        "\n".join(data_test)
+            await bot.send_message(message.chat.id, ''.join(link_data))
             await bot_detail_offer_goods(message, state)
 
 

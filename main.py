@@ -14,7 +14,6 @@ from bs4 import BeautifulSoup
 from googletrans import Translator
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
-from tabulate import tabulate
 
 from models import database_dsn, Note, Translation
 
@@ -349,13 +348,13 @@ async def bot_detail_specifications_goods(message: types.Message, state: FSMCont
             row.append(title[0].text)
             column.append(detail[0].text)
 
-        headers = ["Category", "Description"]
-
         for i in range(len(column)):
-            table.append([row[i], column[i]])
-        data = tabulate(tabular_data=table, headers=headers, tablefmt="fancy_grid")
+            table.append(f"{row[i]} || {column[i]}")
         await bot.send_message(message.chat.id, 'Product characteristics:')
-        await bot.send_message(message.chat.id, f'```{data}```', parse_mode="Markdown")
+        table = "\n----------------------------------------------------------------" \
+                "\n".join(table)
+        await bot.send_message(message.chat.id, text=f"{table}", parse_mode="Markdown")
+
         await bot_detail_reviews_goods(message, state)
 
 
@@ -365,7 +364,7 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
     comments_content = []
     comments_date = []
     formatted_text = []
-    data_test = []
+    output = []
 
     data_state = await state.get_data()
     data = data_state.get('detail_goods')
@@ -405,11 +404,11 @@ async def bot_detail_reviews_goods(message: types.Message, state: FSMContext):
             await bot_detail_offer_goods(message, state)
         else:
             for i in range(len(comments_content)):
-                data_test.append(f"{comments_author[i]} || {comments_date[i]} || {comments_content[i]}")
+                output.append(f"{comments_author[i]} || {comments_date[i]} || {comments_content[i]}")
 
-            link_data = "\n----------------------------------------------------------------" \
-                        "\n".join(data_test)
-            await bot.send_message(message.chat.id, ''.join(link_data))
+            output = "\n----------------------------------------------------------------" \
+                     "\n".join(output)
+            await bot.send_message(message.chat.id, f"{output}")
             await bot_detail_offer_goods(message, state)
 
 
@@ -449,7 +448,7 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
             link_data.append(f"<a href='{shop_link[i]}'>{count}. {shop_name[i]} - {shop_price[i].strip()} </a>")
 
         link_data = "\n".join(link_data)
-        await bot.send_message(message.chat.id, text=''.join(link_data),
+        await bot.send_message(message.chat.id, text=link_data,
                                parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 

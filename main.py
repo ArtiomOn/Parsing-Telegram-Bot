@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import StatesGroup, State
+from aiogram.types import ParseMode
 from bs4 import BeautifulSoup
 from googletrans import Translator
 from sqlalchemy.orm import sessionmaker
@@ -418,7 +419,7 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
     shop_name = []
     shop_price = []
     shop_link = []
-    tb = []
+    link_data = []
     count = 0
 
     data_state = await state.get_data()
@@ -445,13 +446,12 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
         await bot.send_message(message.chat.id, 'Offers:')
 
         for i in range(len(shop_name)):
-            tb.append([shop_name[i], shop_price[i], shop_link[i]])
-            if count == 7:
-                break
             count += 1
+            link_data.append(f"<a href='{shop_link[i]}'>{count}. {shop_name[i]} - {shop_price[i].strip()} </a>")
 
-        data = tabulate(tabular_data=tb, tablefmt="fancy_grid", headers=["Name", "Price", "Link"], stralign='left')
-        await bot.send_message(message.chat.id, f'```{data}```', parse_mode="MarkdownV2")
+        link_data = "\n".join(link_data)
+        await bot.send_message(message.chat.id, text=''.join(link_data),
+                               parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
 if __name__ == "__main__":

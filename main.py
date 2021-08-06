@@ -15,7 +15,7 @@ from googletrans import Translator
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.util import asyncio
 
-from models import database_dsn, Note, Translation
+from models import database_dsn, Note, Translation, Search
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,6 +26,12 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 session = sessionmaker(bind=database_dsn)()
+
+
+class TextBotForm(StatesGroup):
+    text_style = State()
+    text_content = State()
+    text_execute = State()
 
 
 class TranslateForm(StatesGroup):
@@ -58,6 +64,9 @@ async def bot_create_main_menu(message: types.Message):
         [
             types.KeyboardButton('/additional_functionality'),
             types.KeyboardButton('/product_search'),
+        ],
+        [
+            types.KeyboardButton('/neural_network_beta')
         ]
     ])
 
@@ -81,7 +90,7 @@ async def bot_create_command_repeat(message: types.Message):
     await message.reply('Write something:', reply_markup=markup)
 
 
-@dp.message_handler(state='*', commands='cancel_repetition')
+@dp.message_handler(state='*', commands=['cancel_repetition'])
 async def bot_handler_cancel_repeat(message: types.Message, state: FSMContext):
     logging.info(f'Cancelling repeating by user {message.from_user.id}')
     await state.finish()
@@ -94,7 +103,7 @@ async def bot_handler_repeat(message: types.Message):
     await message.reply(message.text)
 
 
-@dp.message_handler(state='*', commands='notes')
+@dp.message_handler(state='*', commands=['notes'])
 async def bot_create_note_menu(message: types.Message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         [
@@ -111,7 +120,7 @@ async def bot_create_note_menu(message: types.Message):
     await message.reply('Choose:', reply_markup=markup)
 
 
-@dp.message_handler(state='*', commands='additional_functionality')
+@dp.message_handler(state='*', commands=['additional_functionality'])
 async def bot_create_additional_features(message: types.Message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
         [
@@ -125,7 +134,7 @@ async def bot_create_additional_features(message: types.Message):
     await message.reply('Choose:', reply_markup=markup)
 
 
-@dp.message_handler(state='*', commands='create_note')
+@dp.message_handler(state='*', commands=['create_note'])
 async def bot_create_command_save_note(message: types.Message):
     logging.info(f'The note was created by the user {message.from_user.id}')
     await Form.note.set()
@@ -146,7 +155,7 @@ async def bot_handler_save_note(message: types.Message, state: FSMContext):
     await bot.send_message(message.chat.id, 'Recorded, thank you 😉')
 
 
-@dp.message_handler(commands='last_note', state='*')
+@dp.message_handler(commands=['last_note'], state='*')
 async def bot_view_last_note(message: types.Message, state: FSMContext):
     logging.info(f'The last note was viewed by the user {message.from_user.id}')
     try:
@@ -158,7 +167,7 @@ async def bot_view_last_note(message: types.Message, state: FSMContext):
         logging.info(f' Error: {e} with user. Error occurred with user: {message.from_user.id}')
 
 
-@dp.message_handler(commands='random_joke')
+@dp.message_handler(commands=['random_joke'])
 async def bot_handler_random_joke(message: types.Message):
     logging.info(f'The joke was created by the user {message.from_user.id}')
     url = r"https://official-joke-api.appspot.com/random_joke"
@@ -265,7 +274,7 @@ async def bot_handler_note(note_title):
     return note_title.id, save_note_data
 
 
-@dp.message_handler(commands='product_search')
+@dp.message_handler(commands=['product_search'])
 async def bot_create_command_goods(message: types.Message):
     logging.info(f'User {message.from_user.id} started searching for products')
     keyboard = types.InlineKeyboardMarkup()
@@ -353,7 +362,7 @@ async def bot_detail_specifications_goods(message: types.Message, state: FSMCont
         await bot.send_message(message.chat.id, 'Product characteristics:')
         table = "\n----------------------------------------------------------------" \
                 "\n".join(table)
-        await bot.send_message(message.chat.id, text=f"{table}", parse_mode="Markdown")
+        await bot.send_message(message.chat.id, text=f"{table}")
 
         await bot_detail_reviews_goods(message, state)
 
@@ -450,6 +459,87 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
         link_data = "\n".join(link_data)
         await bot.send_message(message.chat.id, text=link_data,
                                parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+
+
+@dp.message_handler(commands=['neural_network_beta'], state='*')
+async def bot_create_command_feature(message: types.Message):
+    await bot.send_message(message.chat.id, 'Напишите любой текст..')
+    await TextBotForm.text_content.set()
+
+
+@dp.message_handler(state=TextBotForm.text_content)
+async def bot_text_content(message: types.Message, state: FSMContext):
+    text_styles = ['Без стиля', 'Теории заговора', 'Репортажи', 'Тосты', 'Цитаты', 'Слоганы',
+                   'Истории', 'Инстаграмм', 'Википедия', 'Синопсисы', 'Гороскоп',
+                   'Мудрость', 'beta']
+    text_content = message.text
+    await state.update_data({'text_content': text_content})
+    await bot.send_message(message.chat.id, 'Выберите стиль:')
+    await bot.send_message(message.chat.id, '\n'.join(text_styles))
+    await TextBotForm.text_style.set()
+
+
+@dp.message_handler(state=TextBotForm.text_style)
+async def testing_feature(message: types.Message, state: FSMContext):
+    logging.info(f'User with id {message.from_user.id} started artificial network')
+    value_data = []
+    text_styles = {'безстиля': 0,
+                   'теориизаговора': 1,
+                   'репортажи': 2,
+                   'тосты': 3,
+                   'цитаты': 4,
+                   'слоганы': 5,
+                   'истории': 6,
+                   'инстаграмм': 7,
+                   'Википедия': 8,
+                   'синопсисы': 9,
+                   'гороскоп': 10,
+                   'мудрость': 11,
+                   'beta': 12,
+                   }
+    text_style_message = message.text.lower().replace(' ', '')
+    if text_style_message in text_styles:
+        for key, value in text_styles.items():
+            if key == text_style_message:
+                value_data.append(value)
+                break
+        await state.update_data({'text_style_message': text_style_message})
+        state_data = await state.get_data()
+        test_content = state_data.get('text_content')
+        await state.finish()
+        strings_value_data = [str(integer) for integer in value_data]
+        a_string = ''.join(strings_value_data)
+        response = requests.post(url='https://yandex.ru/lab/api/yalm/text3', json={
+            "query": f"{test_content}",
+            "intro": 0,
+            "filter": int(a_string)
+        })
+        query = Search(
+            user_id=message.from_user.id,
+            search_input=test_content,
+            search_result=response.json().get('text'),
+            created_at=datetime.datetime.now(),
+        )
+        session.add(query)
+        session.commit()
+        if not response.json().get('text'):
+            await bot.send_message(message.chat.id, '🚨Бот не принимает запросы на острые темы, например, '
+                                                    'про политику или религию. Люди могут слишком серьёзно\n '
+                                                    'отнестись к сгенерированным текстам.🚨')
+            await bot.send_message(message.chat.id, '🚨Вероятность того, что запрос задаёт одну из острых тем,\n'
+                                                    'определяет нейросеть, обученная на оценках случайных\n'
+                                                    'людей. Но она может перестараться или, наоборот,\n'
+                                                    'что-то пропустить🚨', )
+        else:
+            data = response.json().get('text')
+            manage = response.json().get('query')
+            await bot.send_message(message.chat.id, f"{manage} {data}")
+            await bot_create_command_exit_main_menu(message)
+
+    else:
+        await bot.send_message(message.chat.id, '🚨 Not found text style, try again 🚨')
+        await state.finish()
+        await bot_create_command_exit_main_menu(message)
 
 
 if __name__ == "__main__":

@@ -26,3 +26,12 @@ class Translation(Base):
     original_language = Column(String)
     translation_language = Column(String)
     created_at = Column(DateTime)
+
+
+class Search(Base):
+    __tablename__ = 'balaboba_search'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer)
+    search_input = Column(String)
+    search_result = Column(String)
+    created_at = Column(DateTime)

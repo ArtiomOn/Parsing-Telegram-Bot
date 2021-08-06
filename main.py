@@ -74,8 +74,9 @@ async def bot_create_main_menu(message: types.Message):
 
 
 @dp.message_handler(commands=['exit'])
-async def bot_create_command_exit_main_menu(message: types.Message):
+async def bot_create_command_exit_main_menu(message: types.Message, state: FSMContext):
     await bot_create_main_menu(message)
+    await state.finish()
 
 
 @dp.message_handler(commands=['repeat_by_me'], state='*')
@@ -462,13 +463,13 @@ async def bot_detail_offer_goods(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(commands=['neural_network_beta'], state='*')
-async def bot_create_command_feature(message: types.Message):
+async def bot_create_command_artificial_network(message: types.Message):
     await bot.send_message(message.chat.id, 'Напишите любой текст..')
     await TextBotForm.text_content.set()
 
 
 @dp.message_handler(state=TextBotForm.text_content)
-async def bot_text_content(message: types.Message, state: FSMContext):
+async def bot_content_artificial_network(message: types.Message, state: FSMContext):
     text_styles = ['Без стиля', 'Теории заговора', 'Репортажи', 'Тосты', 'Цитаты', 'Слоганы',
                    'Истории', 'Инстаграмм', 'Википедия', 'Синопсисы', 'Гороскоп',
                    'Мудрость', 'beta']
@@ -480,7 +481,7 @@ async def bot_text_content(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(state=TextBotForm.text_style)
-async def testing_feature(message: types.Message, state: FSMContext):
+async def bot_handler_artificial_network(message: types.Message, state: FSMContext):
     logging.info(f'User with id {message.from_user.id} started artificial network')
     value_data = []
     text_styles = {'безстиля': 0,
@@ -491,7 +492,7 @@ async def testing_feature(message: types.Message, state: FSMContext):
                    'слоганы': 5,
                    'истории': 6,
                    'инстаграмм': 7,
-                   'Википедия': 8,
+                   'википедия': 8,
                    'синопсисы': 9,
                    'гороскоп': 10,
                    'мудрость': 11,
@@ -506,7 +507,7 @@ async def testing_feature(message: types.Message, state: FSMContext):
         await state.update_data({'text_style_message': text_style_message})
         state_data = await state.get_data()
         test_content = state_data.get('text_content')
-        await state.finish()
+        # await state.finish()
         strings_value_data = [str(integer) for integer in value_data]
         a_string = ''.join(strings_value_data)
         response = requests.post(url='https://yandex.ru/lab/api/yalm/text3', json={
@@ -531,15 +532,38 @@ async def testing_feature(message: types.Message, state: FSMContext):
                                                     'людей. Но она может перестараться или, наоборот,\n'
                                                     'что-то пропустить🚨', )
         else:
+            await TextBotForm.text_execute.set()
             data = response.json().get('text')
             manage = response.json().get('query')
+            await state.update_data({'text_result': data})
+            await state.update_data({'text_style': int(a_string)})
             await bot.send_message(message.chat.id, f"{manage} {data}")
-            await bot_create_command_exit_main_menu(message)
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
+                [
+                    types.KeyboardButton('/continue')
+                ]
+            ], one_time_keyboard=True)
+            await message.reply('You can continue:', reply_markup=markup)
 
     else:
         await bot.send_message(message.chat.id, '🚨 Not found text style, try again 🚨')
         await state.finish()
-        await bot_create_command_exit_main_menu(message)
+
+
+@dp.message_handler(commands='continue')
+@dp.message_handler(state=TextBotForm.text_execute)
+async def bot_continue_message_artificial_network(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    text_result = data.get('text_result')
+    text_style = data.get('text_style')
+    await state.finish()
+    response = requests.post(url='https://yandex.ru/lab/api/yalm/text3', json={
+        "query": f"{text_result}",
+        "intro": 0,
+        "filter": text_style
+    })
+    await bot.send_message(message.chat.id, response.json().get('text'))
+    await bot_create_command_exit_main_menu(message, state)
 
 
 if __name__ == "__main__":
